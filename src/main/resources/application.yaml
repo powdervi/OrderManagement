@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    username: root
+    password: "Hungdz040@@"
+    url: jdbc:mysql://localhost:3306/order_management
+logging:
+  level:
+    org:
+      hibernate:
+        SQL: DEBUG
