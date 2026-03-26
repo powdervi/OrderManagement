@@ -6,13 +6,14 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.data.domain.Persistable;
 
 import java.time.LocalDateTime;
 
 @MappedSuperclass
 @Getter
 @Setter
-public abstract class AbstractEntity {
+public abstract class AbstractEntity implements Persistable<String> {
     @Id
     @UuidGenerator
     @Column(name = "id")
@@ -32,4 +33,8 @@ public abstract class AbstractEntity {
     @Column(name = "last_modified_by")
     private String lastModifiedBy;
 
+    @Override
+    public boolean isNew() {
+        return this.createdAt == null;
+    }
 }

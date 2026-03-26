@@ -6,7 +6,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class AddressRes {
+public class AddressRes  {
     private String id;
     private String userId;
     private String recipientName;

@@ -22,6 +22,12 @@ public class MHErrors {
 
     public static final MHBusinessError CATEGORY_LOOP = new MHBusinessError(400000, "CATEGORY_LOOP", HttpStatus.NOT_FOUND);
 
+    public static final MHBusinessError CATEGORY_IS_NOT_LEAF = new MHBusinessError(400000, "Category is not leaf", HttpStatus.BAD_REQUEST);
+    public static final MHBusinessError PRODUCT_NOT_FOUND = new MHBusinessError(404001, "Product not found", HttpStatus.NOT_FOUND);
+    public static final MHBusinessError INVENTORY_ALREADY_EXISTS = new MHBusinessError(400001, "Inventory already exists", HttpStatus.BAD_REQUEST);
+    public static final MHBusinessError INVENTORY_NOT_FOUND = new  MHBusinessError(404001, "Inventory not found", HttpStatus.NOT_FOUND);
+    public static final MHBusinessError INVENTORY_NOT_ENOUGH = new MHBusinessError(400001, "Inventory not enough", HttpStatus.BAD_REQUEST);
+
     private MHErrors() {
     }
 }

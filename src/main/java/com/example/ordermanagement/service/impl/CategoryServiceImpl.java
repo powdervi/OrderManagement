@@ -21,6 +21,7 @@ public class CategoryServiceImpl implements CategoryService {
     private final ModelMapper modelMapper;
 
     @Override
+    @Transactional
     public Category createCate(CategoryCreateReq categoryCreateReq) {
         Category category = new Category();
         category.setName(categoryCreateReq.getName());
@@ -76,7 +77,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     private boolean validateParent(Category parent, String id) {
-        if(parent.getId().equals(id)){
+        if (parent.getId() != null && parent.getId().equals(id)) {
             return false;
         }
         if(parent.getParentId() == null){

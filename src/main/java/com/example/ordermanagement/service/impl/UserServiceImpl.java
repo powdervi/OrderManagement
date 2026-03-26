@@ -32,9 +32,12 @@ public class UserServiceImpl implements UserService {
     private final ModelMapper modelMapper;
     private final PasswordEncoder passwordEncoder;
     private final EntityManager entityManager;
+
     @Override
+    @Transactional
     public User createUser(UserCreateReq userCreateReq) {
         User user = modelMapper.map(userCreateReq, User.class);
+        user.setId(null);
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         return userRepo.save(user);
     }

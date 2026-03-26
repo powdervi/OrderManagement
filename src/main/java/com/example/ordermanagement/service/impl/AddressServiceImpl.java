@@ -6,6 +6,7 @@ import com.example.ordermanagement.entity.Address;
 import com.example.ordermanagement.exception.MHErrors;
 import com.example.ordermanagement.exception.MHException;
 import com.example.ordermanagement.repository.AddressRepo;
+import com.example.ordermanagement.repository.UserRepo;
 import com.example.ordermanagement.service.AddressService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -20,10 +21,17 @@ import java.util.List;
 public class AddressServiceImpl implements AddressService {
     private final ModelMapper modelMapper;
     private final AddressRepo addressRepo;
+    private final UserRepo userRepo;
 
     @Override
+    @Transactional
     public Address createAddress(String id, AddressCreateReq addressCreateReq) {
+
+        userRepo.findById(id)
+                .orElseThrow(() -> new MHException(MHErrors.USER_NOT_FOUND));
+
         Address address = modelMapper.map(addressCreateReq, Address.class);
+        address.setId(null);
         address.setUserId(id);
         return addressRepo.save(address);
     }
