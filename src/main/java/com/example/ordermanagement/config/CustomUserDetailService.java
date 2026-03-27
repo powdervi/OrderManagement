@@ -3,6 +3,7 @@ package com.example.ordermanagement.config;
 import com.example.ordermanagement.common.UserRole;
 import com.example.ordermanagement.repository.UserRepo;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -18,7 +19,7 @@ public class CustomUserDetailService implements UserDetailsService {
     private final UserRepo userRepo;
 
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    public UserDetails loadUserByUsername(@NonNull String username) throws UsernameNotFoundException {
         com.example.ordermanagement.entity.User user = userRepo.findByUsername(username);
         if(user == null){
             throw new UsernameNotFoundException("sai username");

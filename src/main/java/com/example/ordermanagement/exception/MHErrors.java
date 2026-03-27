@@ -27,6 +27,10 @@ public class MHErrors {
     public static final MHBusinessError INVENTORY_ALREADY_EXISTS = new MHBusinessError(400001, "Inventory already exists", HttpStatus.BAD_REQUEST);
     public static final MHBusinessError INVENTORY_NOT_FOUND = new  MHBusinessError(404001, "Inventory not found", HttpStatus.NOT_FOUND);
     public static final MHBusinessError INVENTORY_NOT_ENOUGH = new MHBusinessError(400001, "Inventory not enough", HttpStatus.BAD_REQUEST);
+    public static final MHBusinessError CART_ALREADY_EXISTS = new MHBusinessError(400001, "Cart already exists", HttpStatus.BAD_REQUEST);
+    public static final MHBusinessError CART_NOT_FOUND = new MHBusinessError(404001, "Cart not found", HttpStatus.NOT_FOUND);
+    public static final MHBusinessError OVER_STOCK = new MHBusinessError(400000, "Over stock", HttpStatus.BAD_REQUEST);
+    public static final MHBusinessError CART_ITEM_NOT_FOUND = new MHBusinessError(404001, "Cart item not found", HttpStatus.NOT_FOUND);
 
     private MHErrors() {
     }
