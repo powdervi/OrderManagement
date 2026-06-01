@@ -18,7 +18,7 @@ public class SortUtil {
             return Sort.by(orders);
         }
 
-        Set<String> allowedFields = Set.of("name", "basePrice");
+        Set<String> allowedFields = Set.of("code", "name", "discountValue", "startAt", "endAt", "createdAt", "basePrice");
 
         String[] sortItems = sort.split(",");
 

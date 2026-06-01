@@ -13,8 +13,11 @@ import com.example.ordermanagement.repository.CartRepo;
 import com.example.ordermanagement.repository.InventoryRepo;
 import com.example.ordermanagement.repository.ProductRepo;
 import com.example.ordermanagement.service.CartItemService;
+import com.example.ordermanagement.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,7 +70,8 @@ public class CartItemServiceImpl implements CartItemService {
     }
 
     @Override
-    public List<CartItemDetailRes> getCartItems(String userId) {
+    public List<CartItemDetailRes> getCartItems() {
+        String userId = SecurityUtils.getCurrentUserId();
         Cart cart = getCartEntity(userId);
 
         List<CartItem> cartItems = cartItemRepo.findAllByCartId(cart.getId());

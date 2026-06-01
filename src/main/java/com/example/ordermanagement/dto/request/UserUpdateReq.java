@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserUpdateReq {
+public class   UserUpdateReq {
     @Size(min = 3, max = 20, message = "user must beetwen 3 to 20 char")
     @Pattern(regexp = "^[A-Za-z0-9]+$", message = "username must be alphabet")
     private String username;

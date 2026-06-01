@@ -114,11 +114,13 @@ public class ProductServiceImpl implements ProductService {
         return productRepo.findAll(specification, pageable);
     }
 
+    //todo kh can la cuoi cung
     private void validateCate(String categoryId) {
         Category category = categoryRepo.findById(categoryId)
                 .orElseThrow(() -> new MHException(MHErrors.CATEGORY_NOT_FOUND));
 
-        if (!categoryRepo.findAllByParentId(category.getId()).isEmpty()) {
+        if (!categoryRepo.findAllByParentId(category.getId())
+                .isEmpty()) {
             throw new MHException(MHErrors.CATEGORY_IS_NOT_LEAF);
         }
     }

@@ -23,6 +23,7 @@ public class UserController {
     private final UserService userService;
     private final ModelMapper modelMapper;
 
+    //todo create 201
     @PostMapping
     public ResponseEntity<BaseResponse<UserRes>> createUser(@RequestBody @Valid UserCreateReq userCreateReq){
         User user = userService.createUser(userCreateReq);
@@ -30,6 +31,7 @@ public class UserController {
         return ResponseEntity.ok(BaseResponse.ofSuccess(userRes));
     }
 
+    //todo su dung put
     @PatchMapping("/{id}")
     public ResponseEntity<BaseResponse<UserRes>> updateUser(
             @PathVariable String id,
@@ -39,6 +41,7 @@ public class UserController {
         return ResponseEntity.ok(BaseResponse.ofSuccess(userRes));
     }
 
+    //todo delete 204
     @DeleteMapping("/{id}")
     public ResponseEntity<BaseResponse<String>> deleteUser(@PathVariable String id) {
         userService.deleteUser(id);

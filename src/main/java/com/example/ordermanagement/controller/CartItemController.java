@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,11 +30,11 @@ public class CartItemController {
         return ResponseEntity.ok(BaseResponse.ofSuccess(cartItemRes));
     }
 
-    @GetMapping("/users/{userId}/cart/items")
-    public ResponseEntity<BaseResponse<List<CartItemDetailRes>>> getCartItems(
-            @PathVariable String userId
-    ) {
-        List<CartItemDetailRes> res = cartItemService.getCartItems(userId);
+    // todo 2 : api get list cart items (man hinh gio hang & kiem tra ton kho)
+    @PreAuthorize("hasAnyRole('CUSTOMER')")
+    @GetMapping("/users/cart/items")
+    public ResponseEntity<BaseResponse<List<CartItemDetailRes>>> getCartItems() {
+        List<CartItemDetailRes> res = cartItemService.getCartItems();
         return ResponseEntity.ok(BaseResponse.ofSuccess(res));
     }
 }

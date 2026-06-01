@@ -27,7 +27,12 @@ public class CustomUserDetailService implements UserDetailsService {
 
         UserRole role = user.getRole();
         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_"+role.name());
-        return new User(username, user.getPasswordHash(), List.of(authority));
+        return new CustomUserPrincipal(
+                user.getId(),
+                user.getUsername(),
+                user.getPasswordHash(),
+                List.of(authority)
+        );
     }
 
 }

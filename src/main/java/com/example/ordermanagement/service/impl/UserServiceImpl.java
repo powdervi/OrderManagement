@@ -69,6 +69,7 @@ public class UserServiceImpl implements UserService {
 
     }
 
+    @Transactional
     @Override
     public void deleteUser(String id) {
         User user = getUserEntity(id);
@@ -132,8 +133,9 @@ public class UserServiceImpl implements UserService {
         return entityManager.createQuery(query).getResultList();
     }
 
-    private User getUserEntity(@NotBlank(message = "id cant be blank") String id) {
+    private User getUserEntity(String id) {
         User user = userRepo.findById(id).orElseThrow(() -> new MHException(MHErrors.USER_NOT_FOUND));
         return user;
     }
+
 }
