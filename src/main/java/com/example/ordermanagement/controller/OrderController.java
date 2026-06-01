@@ -28,6 +28,7 @@ public class OrderController {
         return ResponseEntity.ok(BaseResponse.ofSuccess(result));
     }
 
+    // todo 4: Giỏ hàng & Kiểm tra tồn kho: api place order
     @PostMapping
     public ResponseEntity<BaseResponse<PlaceOrderRes>> placeOrder(@RequestBody @Valid PlaceOrderReq request) {
         PlaceOrderRes result = orderService.placeOrder(request);
