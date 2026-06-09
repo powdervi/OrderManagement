@@ -11,6 +11,7 @@ import com.example.ordermanagement.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -34,7 +35,7 @@ public class ProductController {
     @PostMapping
     public ResponseEntity<BaseResponse<ProductRes>> createProduct(@RequestBody @Valid ProductCreateReq productCreateReq) {
         ProductRes productRes = productService.createProduct(productCreateReq);
-        return ResponseEntity.ok(BaseResponse.ofSuccess(productRes));
+        return ResponseEntity.status(HttpStatus.CREATED).body(BaseResponse.ofSuccess(productRes));
     }
 
     @PreAuthorize("hasRole('ADMIN')")

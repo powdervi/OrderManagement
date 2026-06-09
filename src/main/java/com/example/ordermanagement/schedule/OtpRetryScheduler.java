@@ -23,7 +23,7 @@ public class OtpRetryScheduler {
 
     private final EmailService emailService;
 
-    @Scheduled(fixedDelay = 30000)
+    @Scheduled(fixedDelay = 2000)
     public void retryFailedOtp() {
         long totalFailed = repository.countByStatus(OtpStatus.FAILED);
         if (totalFailed == 0) {

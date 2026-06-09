@@ -20,23 +20,15 @@ public class AuthController {
     public ResponseEntity<BaseResponse<String>> sendRegisterOtp(
             @Valid @RequestBody RegisterSendOtpRequest request
     ) {
-
         authService.sendRegisterOtp(request);
-
-        return ResponseEntity.ok(
-                BaseResponse.ofSuccess("OTP sent successfully")
-        );
+        return ResponseEntity.ok(BaseResponse.ofSuccess("OTP sent successfully"));
     }
 
     @PostMapping("/register/verify")
     public ResponseEntity<BaseResponse<String>> verifyRegisterOtp(
             @Valid @RequestBody RegisterVerifyOtpRequest request
     ) {
-
         authService.verifyRegisterOtp(request);
-
-        return ResponseEntity.ok(
-                BaseResponse.ofSuccess("Register successfully")
-        );
+        return ResponseEntity.ok(BaseResponse.ofSuccess("Register successfully"));
     }
 }

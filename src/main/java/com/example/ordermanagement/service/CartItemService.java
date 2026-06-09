@@ -10,6 +10,5 @@ import java.util.List;
 
 public interface CartItemService {
     CartItemRes creatItem(String userId, @Valid CartItemCreateReq cartItemCreateReq);
-
     List<CartItemDetailRes> getCartItems();
 }

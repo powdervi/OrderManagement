@@ -18,5 +18,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     List<Notification> findTop50ByStatusAndScheduledAtBeforeOrderByCreatedAtAsc(NotificationStatus notificationStatus, LocalDateTime now);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    List<Notification> findByStatusAndScheduledAtBeforeOrderByCreatedAtAsc(NotificationStatus notificationStatus, LocalDateTime now, Pageable pageable);
+    List<Notification> findByStatusAndScheduledAtBeforeOrderByCreatedAtAsc(NotificationStatus notificationStatus,
+                                                                           LocalDateTime now, Pageable pageable);
 }

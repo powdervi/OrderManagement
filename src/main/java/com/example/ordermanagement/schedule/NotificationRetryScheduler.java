@@ -28,7 +28,7 @@ public class NotificationRetryScheduler {
     private final UserRepo userRepo;
     private final EmailService emailService;
 
-    @Scheduled(fixedDelay = 30000)
+    @Scheduled(fixedDelay = 2000)
     public void processPendingNotifications() {
         int pageSize = 50;
 

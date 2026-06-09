@@ -47,8 +47,6 @@ public class OrderValidationServiceImpl implements OrderValidationService {
         }
     }
 
-
-
     @Override
     public void validateOrderAccess(Order order) {
         String currentUserId = SecurityUtils.getCurrentUserId();

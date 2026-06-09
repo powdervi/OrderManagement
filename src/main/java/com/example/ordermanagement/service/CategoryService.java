@@ -11,12 +11,8 @@ import java.util.List;
 
 public interface CategoryService {
     CategoryRes createCate(@Valid CategoryCreateReq categoryCreateReq);
-
     List<CategoryRes> getRoot();
-
     List<CategoryRes> getChild(String id);
-
     List<CategoryTreeRes> getCategoryTree();
-
     CategoryRes updateCate(String id, @Valid CategoryUpdateReq categoryUpdateReq);
 }
