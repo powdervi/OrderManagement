@@ -15,19 +15,12 @@ import java.io.Serializable;
 @NoArgsConstructor
 public class UserRes {
     private String id;
-
     private String username;
-
     private String firstName;
-
     private String lastName;
-
     private String email;
-
     private String phone;
-
     private UserRole role;
-
     private UserStatus status;
 
 }

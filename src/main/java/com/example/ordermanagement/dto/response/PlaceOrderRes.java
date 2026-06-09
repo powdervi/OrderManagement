@@ -6,10 +6,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class PlaceOrderRes {
-
     private String orderId;
-
     private String orderCode;
-
     private String trackingNumber;
 }

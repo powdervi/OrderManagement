@@ -10,11 +10,8 @@ import java.util.Collection;
 @Getter
 @AllArgsConstructor
 public class CustomUserPrincipal implements UserDetails {
-
     private String id;
-
     private String username;
-
     private String password;
 
     private Collection<? extends GrantedAuthority> authorities;

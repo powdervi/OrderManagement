@@ -3,12 +3,14 @@ package com.example.ordermanagement.entity;
 import com.example.ordermanagement.common.OrderStatus;
 import com.example.ordermanagement.common.PaymentStatus;
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Builder
 @Getter
 @Setter
 @Entity

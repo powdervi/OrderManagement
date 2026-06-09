@@ -8,12 +8,8 @@ import java.math.BigDecimal;
 @Getter
 @Setter
 public class CarrierRes {
-
     private String id;
-
     private String name;
-
     private String phone;
-
     private BigDecimal shippingFee;
 }

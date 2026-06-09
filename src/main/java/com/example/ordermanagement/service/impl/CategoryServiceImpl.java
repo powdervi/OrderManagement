@@ -2,94 +2,130 @@ package com.example.ordermanagement.service.impl;
 
 import com.example.ordermanagement.dto.request.CategoryCreateReq;
 import com.example.ordermanagement.dto.request.CategoryUpdateReq;
+import com.example.ordermanagement.dto.response.CategoryRes;
+import com.example.ordermanagement.dto.response.CategoryTreeRes;
 import com.example.ordermanagement.entity.Category;
 import com.example.ordermanagement.exception.MHErrors;
 import com.example.ordermanagement.exception.MHException;
+import com.example.ordermanagement.mapper.CategoryMapper;
 import com.example.ordermanagement.repository.CategoryRepo;
 import com.example.ordermanagement.service.CategoryService;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CategoryServiceImpl implements CategoryService {
+
     private final CategoryRepo categoryRepo;
-    private final ModelMapper modelMapper;
+    private final CategoryMapper categoryMapper;
 
     @Override
-    @Transactional
-    public Category createCate(CategoryCreateReq categoryCreateReq) {
-        Category category = new Category();
-        category.setName(categoryCreateReq.getName());
-        category.setDescription(categoryCreateReq.getDescription());
+    @Transactional(rollbackFor = Exception.class)
+    public CategoryRes createCate(CategoryCreateReq req) {
+        Category category = categoryMapper.toEntity(req);
 
-        if (categoryCreateReq.getParentId() != null && !categoryCreateReq.getParentId().isBlank()) {
-            Category parent = getCategoryEntity(categoryCreateReq.getParentId());
-            category.setParentId(parent.getId());
+        if (req.getParentId() != null && !req.getParentId().isBlank()) {
+            getCategoryEntity(req.getParentId());
         } else {
             category.setParentId(null);
         }
 
-        return categoryRepo.save(category);
+        return categoryMapper.toRes(categoryRepo.save(category));
     }
 
     @Override
-    public List<Category> getRoot() {
-        return categoryRepo.findAllByParentIdIsNull();
+    @Transactional(readOnly = true)
+    public List<CategoryRes> getRoot() {
+        return categoryMapper.toResList(categoryRepo.findAllByParentIdIsNull());
     }
 
     @Override
-    public List<Category> getChild(String id) {
-        return categoryRepo.findAllByParentId(id);
+    @Transactional(readOnly = true)
+    public List<CategoryRes> getChild(String id) {
+        return categoryMapper.toResList(categoryRepo.findAllByParentId(id));
     }
-
     @Override
-    @Transactional
-    public Category updateCate(String id, CategoryUpdateReq categoryUpdateReq) {
+    @Transactional(rollbackFor = Exception.class)
+    public CategoryRes updateCate(String id, CategoryUpdateReq req) {
         Category category = getCategoryEntity(id);
 
-        if(categoryUpdateReq.getName() != null && !categoryUpdateReq.getName().isBlank()){
-            category.setName(categoryUpdateReq.getName());
-        }
-
-        if(categoryUpdateReq.getDescription() != null && !categoryUpdateReq.getDescription().isBlank()){
-            category.setDescription(categoryUpdateReq.getDescription());
-        }
-
-        if(categoryUpdateReq.getParentId() != null && !categoryUpdateReq.getParentId().isBlank()){
-            if (categoryUpdateReq.getParentId().equals(id)) {
+        if (req.getParentId() != null && !req.getParentId().isBlank()) {
+            if (req.getParentId().equals(id)) {
                 throw new MHException(MHErrors.CATEGORY_DUPLICATED);
             }
 
-            Category parent = getCategoryEntity(categoryUpdateReq.getParentId());
-            if(!validateParent(parent, id)){
-                throw new MHException(MHErrors.CATEGORY_LOOP);
+            List<Category> allCategories = categoryRepo.findAll();
+
+            Map<String, String> categoryTreeMap = new HashMap<>();
+            for (Category c : allCategories) {
+                categoryTreeMap.put(c.getId(), c.getParentId());
             }
 
-            category.setParentId(parent.getId());
+            if (!categoryTreeMap.containsKey(req.getParentId())) {
+                throw new MHException(MHErrors.CATEGORY_NOT_FOUND);
+            }
+
+            if (!validateParentInMemory(req.getParentId(), id, categoryTreeMap)) {
+                throw new MHException(MHErrors.CATEGORY_LOOP);
+            }
         }
 
-        return categoryRepo.save(category);
+        categoryMapper.updateCategoryFromReq(req, category);
+
+        if ("".equals(req.getParentId())) {
+            category.setParentId(null);
+        }
+
+        return categoryMapper.toRes(categoryRepo.save(category));
     }
 
-    private boolean validateParent(Category parent, String id) {
-        if (parent.getId() != null && parent.getId().equals(id)) {
-            return false;
-        }
-        if(parent.getParentId() == null){
-            return true;
-        }else{
-            Category grand = getCategoryEntity(parent.getParentId());
-            return validateParent(grand, id);
-        }
+    @Override
+    @Transactional(readOnly = true)
+    public List<CategoryTreeRes> getCategoryTree() {
+
+        List<Category> allCategories = categoryRepo.findAll();
+
+        List<CategoryTreeRes> allNodes = allCategories.stream()
+                .map(c -> new CategoryTreeRes(c.getId(), c.getName(), c.getParentId()))
+                .toList();
+
+        Map<String, List<CategoryTreeRes>> childrenMap = allNodes.stream()
+                .filter(node -> node.getParentId() != null)
+                .collect(Collectors.groupingBy(CategoryTreeRes::getParentId));
+
+        allNodes.forEach(node -> {
+            List<CategoryTreeRes> children = childrenMap.getOrDefault(node.getId(), new ArrayList<>());
+            node.setChildren(children);
+        });
+
+        return allNodes.stream()
+                .filter(node -> node.getParentId() == null)
+                .toList();
     }
 
-    private Category getCategoryEntity(String parentId) {
-        return categoryRepo.findById(parentId)
+    private boolean validateParentInMemory(String newParentId, String currentCategoryId, Map<String, String> categoryTreeMap) {
+        String currentPointer = newParentId;
+
+        while (currentPointer != null) {
+            if (currentPointer.equals(currentCategoryId)) {
+                return false;
+            }
+            currentPointer = categoryTreeMap.get(currentPointer);
+        }
+
+        return true;
+    }
+
+    private Category getCategoryEntity(String id) {
+        return categoryRepo.findById(id)
                 .orElseThrow(() -> new MHException(MHErrors.CATEGORY_NOT_FOUND));
     }
 }

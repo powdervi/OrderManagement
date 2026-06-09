@@ -8,6 +8,19 @@ import java.math.BigDecimal;
 
 public class ProductSpecification {
 
+    public static Specification<Product> likeKeyword(String keyword) {
+        return (root, query, criteriaBuilder) -> {
+            if (keyword == null || keyword.isBlank()) {
+                return criteriaBuilder.conjunction();
+            }
+            String pattern = "%" + keyword.toLowerCase() + "%";
+            return criteriaBuilder.or(
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), pattern),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("sku")), pattern)
+            );
+        };
+    }
+
     public static Specification<Product> likeName(String name) {
         return (root, query, criteriaBuilder) -> {
             if (name == null || name.isBlank()) {

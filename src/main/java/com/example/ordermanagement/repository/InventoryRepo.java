@@ -33,4 +33,6 @@ public interface InventoryRepo extends JpaRepository<Inventory, String> {
             where i.productId in :productIds
             """)
     List<Inventory> findAllByProductIdInForUpdate(@Param("productIds") List<String> productIds);
+
+    List<Inventory> findByProductIdIn(List<String> productIds);
 }

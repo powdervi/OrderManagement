@@ -1,5 +1,6 @@
 package com.example.ordermanagement.entity;
 
+import com.example.ordermanagement.common.OtpStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
@@ -44,4 +45,13 @@ public class EmailVerification {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private OtpStatus status;
+
+    private LocalDateTime sentAt;
+
+    @Column(length = 500)
+    private String lastError;
 }

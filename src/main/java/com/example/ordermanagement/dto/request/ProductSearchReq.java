@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ProductSearchReq {
-    private String name;
+    private String keyword;
     private String categoryId;
     private ProductStatus status;
     private BigDecimal minPrice;

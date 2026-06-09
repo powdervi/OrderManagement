@@ -2,17 +2,20 @@ package com.example.ordermanagement.service.impl;
 
 import com.example.ordermanagement.dto.request.CartItemCreateReq;
 import com.example.ordermanagement.dto.response.CartItemDetailRes;
+import com.example.ordermanagement.dto.response.CartItemRes;
 import com.example.ordermanagement.entity.Cart;
 import com.example.ordermanagement.entity.CartItem;
 import com.example.ordermanagement.entity.Inventory;
 import com.example.ordermanagement.entity.Product;
 import com.example.ordermanagement.exception.MHErrors;
 import com.example.ordermanagement.exception.MHException;
+import com.example.ordermanagement.mapper.CartItemMapper;
 import com.example.ordermanagement.repository.CartItemRepo;
 import com.example.ordermanagement.repository.CartRepo;
 import com.example.ordermanagement.repository.InventoryRepo;
 import com.example.ordermanagement.repository.ProductRepo;
 import com.example.ordermanagement.service.CartItemService;
+import com.example.ordermanagement.service.InventoryService;
 import com.example.ordermanagement.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -22,9 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,78 +35,60 @@ public class CartItemServiceImpl implements CartItemService {
     private final CartItemRepo cartItemRepo;
     private final CartRepo cartRepo;
     private final ProductRepo productRepo;
-    private final InventoryRepo inventoryRepo;
+    private final CartItemMapper cartItemMapper;
+    private final InventoryService inventoryService;
 
     @Override
-    @Transactional
-    public CartItem creatItem(String userId, CartItemCreateReq req) {
+    @Transactional(rollbackFor = Exception.class)
+    public CartItemRes creatItem(String userId, CartItemCreateReq req) {
 
-        Cart cart = getCartEntity( userId);
+        Cart cart = getCartEntity(userId);
+        inventoryService.checkAvailableStock(req.getProductId(), req.getQuantity());
 
-        if (!productRepo.existsById(req.getProductId())) {
-            throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-        }
-
-        Inventory inventory = inventoryRepo.findByProductId(req.getProductId())
-                .orElseThrow(() -> new MHException(MHErrors.INVENTORY_NOT_FOUND));
-
-        if(req.getQuantity() > inventory.getQuantityInStock()) {
-            throw new MHException(MHErrors.OVER_STOCK);
-        }
-
-        Optional<CartItem> optional = cartItemRepo
-                .findByCartIdAndProductId(cart.getId(), req.getProductId());
+        Optional<CartItem> optional = cartItemRepo.findByCartIdAndProductId(cart.getId(), req.getProductId());
+        CartItem savedCartItem;
 
         if (optional.isPresent()) {
-            CartItem cartItem = optional.get();
-            cartItem.setQuantity(cartItem.getQuantity() + req.getQuantity());
-            return cartItemRepo.save(cartItem);
+            CartItem existingItem = optional.get();
+            existingItem.setQuantity(existingItem.getQuantity() + req.getQuantity());
+            savedCartItem = cartItemRepo.save(existingItem);
+        } else {
+            CartItem newItem = new CartItem();
+            newItem.setCartId(cart.getId());
+            newItem.setProductId(req.getProductId());
+            newItem.setQuantity(req.getQuantity());
+            savedCartItem = cartItemRepo.save(newItem);
         }
 
-        CartItem cartItem = new CartItem();
-        cartItem.setId(null);
-        cartItem.setCartId(cart.getId());
-        cartItem.setProductId(req.getProductId());
-        cartItem.setQuantity(req.getQuantity());
-
-        return cartItemRepo.save(cartItem);
+        return cartItemMapper.toCartItemRes(savedCartItem);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<CartItemDetailRes> getCartItems() {
         String userId = SecurityUtils.getCurrentUserId();
         Cart cart = getCartEntity(userId);
 
         List<CartItem> cartItems = cartItemRepo.findAllByCartId(cart.getId());
 
-        List<CartItemDetailRes> result = new ArrayList<>();
-
-        if(!cartItems.isEmpty()) {
-            for (CartItem cartItem : cartItems) {
-                Product product = productRepo.findById(cartItem.getProductId())
-                        .orElseThrow(() -> new MHException(MHErrors.PRODUCT_NOT_FOUND));
-
-                CartItemDetailRes res = new CartItemDetailRes();
-                res.setCartItemId(cartItem.getId());
-                res.setProductId(product.getId());
-                res.setProductName(product.getName());
-                res.setDescription(product.getDescription());
-                res.setBasePrice(product.getBasePrice());
-                res.setQuantity(cartItem.getQuantity());
-                res.setLineTotal(
-                        product.getBasePrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()))
-                );
-
-                result.add(res);
-            }
+        if (cartItems.isEmpty()) {
+            return Collections.emptyList();
         }
+        List<String> productIds = cartItems.stream().map(CartItem::getProductId).toList();
 
-        return result;
+        Map<String, Product> productMap = productRepo.findAllById(productIds).stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+
+        return cartItems.stream().map(cartItem -> {
+            Product product = productMap.get(cartItem.getProductId());
+            if (product == null) {
+                throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
+            }
+            return cartItemMapper.toCartItemDetailRes(cartItem, product);
+        }).toList();
     }
 
     private Cart getCartEntity(String userId) {
-        return cartRepo.findByUserId(userId)
-                .orElseThrow(() -> new MHException(MHErrors.CART_NOT_FOUND));
+        return cartRepo.findByUserId(userId).orElseThrow(() -> new MHException(MHErrors.CART_NOT_FOUND));
     }
 
 }

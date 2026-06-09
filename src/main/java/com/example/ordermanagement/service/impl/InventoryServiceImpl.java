@@ -60,4 +60,17 @@ public class InventoryServiceImpl implements InventoryService {
 
         return inventoryRepo.save(inventory);
     }
+
+    @Override
+    public void checkAvailableStock(String productId, Integer quantity) {
+        if (!productRepo.existsById(productId)) {
+            throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
+        }
+
+        Inventory inventory = inventoryRepo.findByProductId(productId).orElseThrow(() -> new MHException(MHErrors.INVENTORY_NOT_FOUND));
+
+        if (quantity > inventory.getQuantityInStock()) {
+            throw new MHException(MHErrors.OVER_STOCK);
+        }
+    }
 }

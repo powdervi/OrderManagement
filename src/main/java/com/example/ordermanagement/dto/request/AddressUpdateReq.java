@@ -8,27 +8,28 @@ import lombok.Setter;
 @Setter
 public class AddressUpdateReq {
 
-    @Size(max = 255)
+    @Size(min = 1, max = 255, message = "Recipient name must be between 1 and 255 characters")
     private String recipientName;
 
-    @Pattern(regexp = "^\\+?[1-9]\\d{7,14}$",
-            message = "Invalid phone number format")
+    @Pattern(regexp = "^\\+?[1-9]\\d{7,14}$", message = "Invalid phone number format")
     private String recipientPhone;
 
-    @Size(max = 100)
+    @Size(min = 1, max = 100)
     private String province;
 
-    @Size(max = 100)
+    @Size(min = 1, max = 100)
     private String district;
 
-    @Size(max = 100)
+    @Size(min = 1, max = 100)
     private String ward;
 
+    @Size(max = 255)
     private String street;
 
-    @Size(max = 500)
+    @Size(min = 1, max = 500)
     private String detail;
 
+    @Size(max = 20)
     private String postalCode;
 
     private Boolean isDefault;

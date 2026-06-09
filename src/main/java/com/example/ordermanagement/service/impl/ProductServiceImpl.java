@@ -1,15 +1,23 @@
 package com.example.ordermanagement.service.impl;
 
+import com.example.ordermanagement.common.ProductStatus;
 import com.example.ordermanagement.dto.request.ProductCreateReq;
 import com.example.ordermanagement.dto.request.ProductSearchReq;
 import com.example.ordermanagement.dto.request.ProductUpdateReq;
+import com.example.ordermanagement.dto.response.InventorySummaryRes;
+import com.example.ordermanagement.dto.response.ProductDetailRes;
+import com.example.ordermanagement.dto.response.ProductRes;
 import com.example.ordermanagement.entity.Category;
+import com.example.ordermanagement.entity.Inventory;
 import com.example.ordermanagement.entity.Product;
 import com.example.ordermanagement.exception.MHErrors;
 import com.example.ordermanagement.exception.MHException;
+import com.example.ordermanagement.mapper.ProductMapper;
 import com.example.ordermanagement.repository.CategoryRepo;
+import com.example.ordermanagement.repository.InventoryRepo;
 import com.example.ordermanagement.repository.ProductRepo;
 import com.example.ordermanagement.service.ProductService;
+import com.example.ordermanagement.service.helper.OrderCodeGenerator;
 import com.example.ordermanagement.service.spec.ProductSpecification;
 import com.example.ordermanagement.utils.SortUtil;
 import jakarta.persistence.EntityManager;
@@ -17,7 +25,6 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,101 +35,205 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
     private final ProductRepo productRepo;
-    private final ModelMapper modelMapper;
     private final CategoryRepo categoryRepo;
+    private final InventoryRepo inventoryRepo;
+    private final ProductMapper productMapper;
+    private final OrderCodeGenerator  orderCodeGenerator;
+
 
     @Override
-    @Transactional
-    public Product createProduct(ProductCreateReq productCreateReq) {
-        Product product = modelMapper.map(productCreateReq, Product.class);
-        product.setId(null);
+    @Transactional(readOnly = true)
+    public InventorySummaryRes getInventorySummary() {
+        BigDecimal totalValue = productRepo.calculateTotalInventoryValue();
 
-        validateCate(productCreateReq.getCategoryId());
+        long totalProducts = productRepo.count();
 
-        log.info("Creating product with id {} and name {}", product.getId(), product.getName());
-        return productRepo.save(product);
+        int lowStockThreshold = 10;
+        long lowStockCount = productRepo.countLowStockProducts(lowStockThreshold);
+
+        return InventorySummaryRes.builder()
+                .totalInventoryValue(totalValue)
+                .totalProducts(totalProducts)
+                .lowStockCount(lowStockCount)
+                .build();
     }
 
     @Override
-    @Transactional
-    public Product updateProduct(String id, ProductUpdateReq productUpdateReq) {
+    @Transactional(readOnly = true)
+    public ProductDetailRes getProductDetail(String id) {
         Product product = getProductEntity(id);
+        ProductDetailRes res = productMapper.toProductDetailRes(product);
 
-        if (productUpdateReq.getCategoryId() != null && !productUpdateReq.getCategoryId().isBlank()) {
-            validateCate(productUpdateReq.getCategoryId());
+        inventoryRepo.findByProductId(product.getId())
+                .ifPresent(inv -> res.setQuantityInStock(inv.getQuantityInStock()));
 
-            product.setCategoryId(productUpdateReq.getCategoryId());
+        if (product.getCategoryId() != null) {
+            categoryRepo.findById(product.getCategoryId())
+                    .ifPresent(cat -> res.setCategoryName(cat.getName()));
         }
 
-        if (productUpdateReq.getName() != null && !productUpdateReq.getName().isBlank()) {
-            product.setName(productUpdateReq.getName());
-        }
-
-        if (productUpdateReq.getDescription() != null) {
-            product.setDescription(productUpdateReq.getDescription());
-        }
-
-        if (productUpdateReq.getBasePrice() != null) {
-            product.setBasePrice(productUpdateReq.getBasePrice());
-        }
-
-        if (productUpdateReq.getWeight() != null) {
-            product.setWeight(productUpdateReq.getWeight());
-        }
-
-        if (productUpdateReq.getStatus() != null) {
-            product.setStatus(productUpdateReq.getStatus());
-        }
-
-        return productRepo.save(product);
+        return res;
     }
 
     @Override
-    public Page<Product> search(Integer pageSize, Integer pageNumber, String sort, ProductSearchReq productSearchReq) {
-        Specification<Product> specification = Specification.unrestricted();
+    @Transactional(rollbackFor = Exception.class)
+    public ProductRes createProduct(ProductCreateReq req) {
 
-        if (productSearchReq.getName() != null && !productSearchReq.getName().isBlank()) {
-            specification = specification.and(ProductSpecification.likeName(productSearchReq.getName()));
+        validateCate(req.getCategoryId());
+
+        Product product = productMapper.toEntity(req);
+
+        if (req.getSku() == null || req.getSku().isBlank()) {
+            product.setSku(orderCodeGenerator.generateProductSku());
+            log.info("System auto-generated SKU: {}", product.getSku());
+        } else {
+            product.setSku(req.getSku().trim().toUpperCase());
+            log.info("Using manual SKU: {}", product.getSku());
         }
 
-        if (productSearchReq.getCategoryId() != null && !productSearchReq.getCategoryId().isBlank()) {
-            specification = specification.and(ProductSpecification.equalCategoryId(productSearchReq.getCategoryId()));
-        }
+        product.setStatus(ProductStatus.ACTIVE);
 
-        if (productSearchReq.getStatus() != null) {
-            specification = specification.and(ProductSpecification.equalStatus(productSearchReq.getStatus()));
-        }
+        product = productRepo.save(product);
 
-        if (productSearchReq.getMinPrice() != null) {
-            specification = specification.and(ProductSpecification.greaterThanOrEqualMinPrice(productSearchReq.getMinPrice()));
-        }
+        Inventory inventory = new Inventory();
+        inventory.setProductId(product.getId());
+        inventory.setQuantityInStock(req.getQuantityInStock() != null ? req.getQuantityInStock() : 0);
+        inventoryRepo.save(inventory);
 
-        if (productSearchReq.getMaxPrice() != null) {
-            specification = specification.and(ProductSpecification.lessThanOrEqualMaxPrice(productSearchReq.getMaxPrice()));
-        }
+        ProductRes res = productMapper.toProductRes(product);
+        res.setQuantityInStock(inventory.getQuantityInStock());
 
+        categoryRepo.findById(product.getCategoryId())
+                .ifPresent(cat -> res.setCategoryName(cat.getName()));
 
-        Sort sortObj = SortUtil.buildSort(sort);
-        Pageable pageable = PageRequest.of(pageNumber, pageSize, sortObj);
-
-        return productRepo.findAll(specification, pageable);
+        return res;
     }
 
-    //todo kh can la cuoi cung
     private void validateCate(String categoryId) {
-        Category category = categoryRepo.findById(categoryId)
-                .orElseThrow(() -> new MHException(MHErrors.CATEGORY_NOT_FOUND));
+        if (categoryId == null || categoryId.isBlank()) return;
 
-        if (!categoryRepo.findAllByParentId(category.getId())
-                .isEmpty()) {
-            throw new MHException(MHErrors.CATEGORY_IS_NOT_LEAF);
+        if (!categoryRepo.existsById(categoryId)) {
+            throw new MHException(MHErrors.CATEGORY_NOT_FOUND);
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProductRes updateProduct(String id, ProductUpdateReq req) {
+        Product product = productRepo.findById(id)
+                .orElseThrow(() -> new MHException(MHErrors.PRODUCT_NOT_FOUND));
+
+        if (req.getCategoryId() != null && !req.getCategoryId().isBlank()) {
+            if (!categoryRepo.existsById(req.getCategoryId())) {
+                throw new MHException(MHErrors.CATEGORY_NOT_FOUND);
+            }
+        }
+
+        if (req.getSku() != null && !req.getSku().isBlank()) {
+            req.setSku(req.getSku().trim().toUpperCase());
+        }
+
+        productMapper.updateProductFromReq(req, product);
+
+        product = productRepo.save(product);
+
+        // 5. Cập nhật số lượng Tồn kho
+        int currentStock = 0;
+        if (req.getQuantityInStock() != null) {
+            Inventory inventory = inventoryRepo.findByProductId(id)
+                    .orElseGet(() -> {
+                        Inventory newInv = new Inventory();
+                        newInv.setProductId(id);
+                        return newInv;
+                    });
+
+            inventory.setQuantityInStock(req.getQuantityInStock());
+            inventoryRepo.save(inventory);
+            currentStock = req.getQuantityInStock();
+        } else {
+            currentStock = inventoryRepo.findByProductId(product.getId())
+                    .map(Inventory::getQuantityInStock).orElse(0);
+        }
+
+        ProductRes res = productMapper.toProductRes(product);
+        res.setQuantityInStock(currentStock);
+
+        if (product.getCategoryId() != null) {
+            categoryRepo.findById(product.getCategoryId())
+                    .ifPresent(cat -> res.setCategoryName(cat.getName()));
+        }
+
+        return res;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductRes> search(Integer pageSize, Integer pageNumber, String sort, ProductSearchReq req) {
+
+        Specification<Product> spec = Specification.unrestricted();
+
+        if (req != null) {
+            if (req.getKeyword() != null && !req.getKeyword().isBlank()) {
+                spec = spec.and(ProductSpecification.likeKeyword(req.getKeyword()));
+            }
+            if (req.getCategoryId() != null && !req.getCategoryId().isBlank()) {
+                spec = spec.and(ProductSpecification.equalCategoryId(req.getCategoryId()));
+            }
+            if (req.getStatus() != null) {
+                spec = spec.and(ProductSpecification.equalStatus(req.getStatus()));
+            }
+            if (req.getMinPrice() != null) {
+                spec = spec.and(ProductSpecification.greaterThanOrEqualMinPrice(req.getMinPrice()));
+            }
+
+            if (req.getMaxPrice() != null) {
+                spec = spec.and(ProductSpecification.lessThanOrEqualMaxPrice(req.getMaxPrice()));
+            }
+        }
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, SortUtil.buildSort(sort != null ? sort : "-createdAt"));
+        Page<Product> productPage = productRepo.findAll(spec, pageable);
+
+        if (productPage.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        List<String> productIds = productPage.getContent().stream()
+                .map(Product::getId)
+                .toList();
+
+        Set<String> categoryIds = productPage.getContent().stream()
+                .map(Product::getCategoryId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toSet());
+
+        Map<String, Integer> inventoryMap = inventoryRepo.findByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(Inventory::getProductId, Inventory::getQuantityInStock));
+
+        Map<String, String> categoryMap = categoryRepo.findAllById(categoryIds).stream()
+                .collect(Collectors.toMap(Category::getId, Category::getName));
+
+        return productPage.map(product -> {
+            ProductRes res = productMapper.toProductRes(product);
+
+            res.setQuantityInStock(inventoryMap.getOrDefault(product.getId(), 0));
+            res.setCategoryName(categoryMap.getOrDefault(product.getCategoryId(), "Uncategorized"));
+
+            return res;
+        });
     }
 
     private Product getProductEntity(String id) {

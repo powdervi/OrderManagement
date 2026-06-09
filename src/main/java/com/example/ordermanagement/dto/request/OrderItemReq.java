@@ -1,5 +1,6 @@
 package com.example.ordermanagement.dto.request;
 
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -15,5 +16,6 @@ public class OrderItemReq {
 
     @NotNull(message = "Quantity is required")
     @Min(value = 1, message = "Quantity must be greater than 0")
+    @Max(value = 999, message = "Quantity must not exceed 999 items per request")
     private Integer quantity;
 }

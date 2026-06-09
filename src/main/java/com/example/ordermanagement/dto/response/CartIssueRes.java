@@ -6,10 +6,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class CartIssueRes {
-
     private String cartItemId;
-
     private String type;
-
     private String message;
 }

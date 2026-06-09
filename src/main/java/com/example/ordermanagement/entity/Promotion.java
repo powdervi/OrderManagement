@@ -1,6 +1,7 @@
 package com.example.ordermanagement.entity;
 
 import com.example.ordermanagement.common.DiscountType;
+import com.example.ordermanagement.common.PromotionStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,6 +30,10 @@ public class Promotion extends AbstractEntity {
 
     @Column(name = "discount_value", nullable = false, precision = 15, scale = 2)
     private BigDecimal discountValue;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private PromotionStatus status;
 
     @Column(name = "start_at", nullable = false)
     private LocalDateTime startAt;

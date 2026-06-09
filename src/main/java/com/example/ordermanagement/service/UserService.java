@@ -3,19 +3,22 @@ package com.example.ordermanagement.service;
 import com.example.ordermanagement.dto.request.UserCreateReq;
 import com.example.ordermanagement.dto.request.UserSearchReq;
 import com.example.ordermanagement.dto.request.UserUpdateReq;
+import com.example.ordermanagement.dto.response.UserRes;
 import com.example.ordermanagement.entity.User;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
 public interface UserService {
-    User createUser(UserCreateReq userCreateReq);
+    UserRes createUser(UserCreateReq userCreateReq);
 
-    User updateUser(String id, UserUpdateReq userUpdateReq);
+    UserRes updateUser(String id, UserUpdateReq userUpdateReq);
 
     void deleteUser(String id);
 
-    User getById(String id);
+    UserRes getById(String id);
 
-    List<User> search(UserSearchReq userSearchReq);
+    Page<UserRes> search(UserSearchReq userSearchReq, Pageable pageable);
 }

@@ -9,7 +9,9 @@ import com.example.ordermanagement.service.InventoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,6 +21,7 @@ public class InventoryController {
     private final InventoryService inventoryService;
     private final ModelMapper modelMapper;
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'WAREHOUSE_STAFF')")
     @PostMapping("/products/{productId}/inventory")
     public ResponseEntity<BaseResponse<InventoryRes>> createInventory(
             @PathVariable String productId,
@@ -26,9 +29,10 @@ public class InventoryController {
     ) {
         Inventory inventory = inventoryService.create(productId, req);
         InventoryRes res = modelMapper.map(inventory, InventoryRes.class);
-        return ResponseEntity.ok(BaseResponse.ofSuccess(res));
+        return ResponseEntity.status(HttpStatus.CREATED).body(BaseResponse.ofSuccess(res));
     }
 
+    @PreAuthorize("hasAnyRole('ADMIN', 'WAREHOUSE_STAFF')")
     @PutMapping("/inventory/{id}")
     public ResponseEntity<BaseResponse<InventoryRes>> updateInventory(
             @PathVariable String id,

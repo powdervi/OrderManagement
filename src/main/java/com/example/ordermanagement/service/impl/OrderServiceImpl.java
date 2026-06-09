@@ -1,381 +1,213 @@
 package com.example.ordermanagement.service.impl;
 
 import com.example.ordermanagement.common.*;
-import com.example.ordermanagement.dto.request.OrderItemReq;
 import com.example.ordermanagement.dto.request.OrderSummaryReq;
 import com.example.ordermanagement.dto.request.PlaceOrderReq;
-import com.example.ordermanagement.dto.response.CarrierRes;
-import com.example.ordermanagement.dto.response.OrderIssueRes;
-import com.example.ordermanagement.dto.response.OrderSummaryRes;
-import com.example.ordermanagement.dto.response.PlaceOrderRes;
+import com.example.ordermanagement.dto.request.UpdateOrderStatusReq;
+import com.example.ordermanagement.dto.response.*;
 import com.example.ordermanagement.entity.*;
 import com.example.ordermanagement.exception.MHErrors;
 import com.example.ordermanagement.exception.MHException;
+import com.example.ordermanagement.mapper.OrderMapper;
 import com.example.ordermanagement.repository.*;
-import com.example.ordermanagement.service.OrderService;
+import com.example.ordermanagement.service.*;
+import com.example.ordermanagement.service.helper.OrderCodeGenerator;
 import com.example.ordermanagement.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
-    private final PromotionRepo promotionRepo;
-    private final InventoryRepo inventoryRepo;
-    private final ProductRepo productRepo;
-    private final CarrierRepo carrierRepo;
-    private final OrderItemRepo orderItemRepo;
-    private final OrderRepo orderRepo;
-    private final AddressRepo addressRepo;
-    private final TrackingLogRepo trackingLogRepo;
-    private final PaymentMethodRepo paymentMethodRepo;
-    private final CartRepo cartRepo;
-    private final CartItemRepo cartItemRepo;
-    private final ModelMapper modelMapper;
 
+    private final OrderRepo orderRepo;
+    private final OrderItemRepo orderItemRepo;
+    private final UserRepo userRepo;
+    private final OrderMapper orderMapper;
+
+    private final AddressService addressService;
+    private final PaymentMethodService paymentMethodService;
+    private final OrderValidationService validationService;
+    private final CarrierService carrierService;
+    private final PromotionService promotionService;
+    private final PricingService pricingService;
+    private final OrderItemService orderItemService;
+    private final TrackingLogService trackingLogService;
+    private final NotificationService notificationService;
+    private final CartCleanupService cartCleanupService;
+    private final OrderCodeGenerator codeGenerator;
 
     @Override
     public OrderSummaryRes getSummary(OrderSummaryReq req) {
-
-        validateDuplicateProducts(req.getItems());
+        validationService.validateDuplicateProducts(req.getItems());
         List<OrderIssueRes> issues = new ArrayList<>();
 
-        BigDecimal subtotal = calculateSubtotal(req.getItems(), issues);
-        BigDecimal discount = calculateDiscount(subtotal, req.getPromotionId(), issues);
+        BigDecimal subtotal = pricingService.calculateSubtotalForSummary(req.getItems(), issues);
 
-        Carrier carrier = randomCarrier();
+        Promotion promotion = null;
+        if (req.getPromotionId() != null && !req.getPromotionId().isBlank()) {
+            try {
+                promotion = promotionService.validatePromotion(req.getPromotionId());
+            } catch (Exception e) {
+                OrderIssueRes issue = new OrderIssueRes();
+                issue.setType("INVALID_PROMOTION");
+                issue.setMessage("Promotion not found or expired");
+                issues.add(issue);
+            }
+        }
 
+        BigDecimal discount = promotionService.calculateDiscount(subtotal, promotion, issues);
+
+        Carrier carrier = carrierService.getRandomCarrier();
         BigDecimal shippingFee = carrier.getShippingFee();
-
         BigDecimal grandTotal = subtotal.subtract(discount).add(shippingFee);
-
-        CarrierRes carrierRes = modelMapper.map(carrier, CarrierRes.class);
 
         OrderSummaryRes res = new OrderSummaryRes();
         res.setSubtotal(subtotal);
         res.setDiscount(discount);
         res.setShippingFee(shippingFee);
         res.setGrandTotal(grandTotal);
-        res.setCarrier(carrierRes);
+        res.setCarrier(orderMapper.toCarrierRes(carrier));
         res.setIssues(issues);
         res.setValid(issues.isEmpty());
 
         return res;
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public PlaceOrderRes placeOrder(PlaceOrderReq req) {
-
-        validateDuplicateProducts(req.getItems());
-
+        validationService.validateDuplicateProducts(req.getItems());
         String userId = SecurityUtils.getCurrentUserId();
 
-        Address address = addressRepo.findById(req.getAddressId()).orElseThrow(() -> new MHException(MHErrors.ADDRESS_NOT_FOUND));
+        Address address = addressService.validateAddress(req.getAddressId(), userId);
+        PaymentMethod paymentMethod = paymentMethodService.validatePaymentMethod(req.getPaymentMethodId());
+        Carrier carrier = carrierService.validateAndGetCarrier(req.getCarrierId());
 
-        if (!address.getUserId().equals(userId)) {
-            throw new MHException(MHErrors.ADDRESS_NOT_FOUND);
-        }
+        Promotion promotion = promotionService.validatePromotion(req.getPromotionId());
 
-        PaymentMethod paymentMethod = paymentMethodRepo.findById(req.getPaymentMethodId()).orElseThrow(() -> new MHException(MHErrors.PAYMENT_METHOD_NOT_FOUND));
+        OrderItemService.ItemMetrics metrics = orderItemService.calculateMetricsAndValidateStock(req.getItems());
 
-        if (paymentMethod.getStatus() != PaymentMethodStatus.ACTIVE) {
-            throw new MHException(MHErrors.INVALID_PAYMENT_METHOD);
-        }
-
-        Carrier carrier = carrierRepo.findById(req.getCarrierId()).orElseThrow(() -> new MHException(MHErrors.CARRIER_NOT_FOUND));
-
-        if (carrier.getStatus() != CarrierStatus.ACTIVE) {
-            throw new MHException(MHErrors.CARRIER_NOT_FOUND);
-        }
-
-        Promotion promotion = validatePromotion(req.getPromotionId());
-
-        List<String> productIds = req.getItems().stream().map(OrderItemReq::getProductId).toList();
-        List<Product> products = productRepo.findAllById(productIds);
-        if (products.size() != productIds.size()) {
-            throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-        }
-        Map<String, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, Function.identity()));
-
-        List<Inventory> inventories = inventoryRepo.findAllByProductIdInForUpdate(productIds);
-        if (inventories.size() != productIds.size()) {
-            throw new MHException(MHErrors.INVENTORY_NOT_FOUND);
-        }
-        Map<String, Inventory> inventoryMap = inventories.stream().collect(Collectors.toMap(Inventory::getProductId, Function.identity()));
-
-        BigDecimal itemTotal = BigDecimal.ZERO;
-        BigDecimal totalWeight = BigDecimal.ZERO;
-
-        for (OrderItemReq itemReq : req.getItems()) {
-            Product product = productMap.get(itemReq.getProductId());
-            if (product == null) {
-                throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-            }
-            if (product.getStatus() != ProductStatus.ACTIVE) {
-                throw new MHException(MHErrors.PRODUCT_INACTIVE);
-            }
-
-            Inventory inventory = inventoryMap.get(product.getId());
-            if (inventory == null) {
-                throw new MHException(MHErrors.INVENTORY_NOT_FOUND);
-            }
-            if (itemReq.getQuantity() > inventory.getQuantityInStock()) {
-                throw new MHException(MHErrors.OUT_OF_STOCK);
-            }
-
-            BigDecimal lineTotal = product.getBasePrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
-
-            itemTotal = itemTotal.add(lineTotal);
-
-            if (product.getWeight() != null) {
-                totalWeight = totalWeight.add(product.getWeight().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
-            }
-
-        }
-
-        BigDecimal discountTotal = calculateDiscount(itemTotal, req.getPromotionId(), new ArrayList<>());
+        BigDecimal discountTotal = promotionService.calculateDiscount(metrics.getItemTotal(), promotion, new ArrayList<>());
         BigDecimal shippingFee = carrier.getShippingFee();
-        BigDecimal grandTotal = itemTotal.subtract(discountTotal).add(shippingFee);
+        BigDecimal grandTotal = metrics.getItemTotal().subtract(discountTotal).add(shippingFee);
 
-        Order order = new Order();
-        order.setOrderCode(generateOrderCode());
-        order.setTrackingNumber(generateTrackingNumber());
-        order.setUserId(userId);
-        order.setAddressId(address.getId());
-        order.setPaymentMethodId(paymentMethod.getId());
-        order.setPromotionId(promotion == null ? null : promotion.getId());
-        order.setCarrierId(carrier.getId());
-        order.setOrderStatus(OrderStatus.PENDING);
-        order.setPaymentStatus(PaymentStatus.UNPAID);
-        order.setItemTotal(itemTotal);
-        order.setDiscountTotal(discountTotal);
-        order.setShippingFee(shippingFee);
-        order.setGrandTotal(grandTotal);
-        order.setTotalWeight(totalWeight);
-        order.setNote(req.getNote());
-        order.setPlacedAt(LocalDateTime.now());
-        order.setEstimatedDeliveryAt(LocalDateTime.now().plusDays(3));
-
-        // address snapshot
-        order.setRecipientNameSnapshot(address.getRecipientName());
-        order.setRecipientPhoneSnapshot(address.getRecipientPhone());
-        order.setProvinceSnapshot(address.getProvince());
-        order.setDistrictSnapshot(address.getDistrict());
-        order.setWardSnapshot(address.getWard());
-        order.setStreetSnapshot(address.getStreet());
-        order.setDetailSnapshot(address.getDetail());
-        order.setPostalCodeSnapshot(address.getPostalCode());
-
-        // payment snapshot
-        order.setPaymentMethodNameSnapshot(paymentMethod.getName());
-
-        // carrier snapshot
-        order.setCarrierNameSnapshot(carrier.getName());
-
-        // promotion snapshot
-        if (promotion != null) {
-            order.setPromotionCodeSnapshot(promotion.getCode());
-        }
-
+        Order order = createOrder(req, userId, address, paymentMethod, carrier, promotion, metrics, discountTotal, shippingFee, grandTotal);
         orderRepo.save(order);
 
-        for (OrderItemReq itemReq : req.getItems()) {
-            Product product = productMap.get(itemReq.getProductId());
-            if (product == null) {
-                throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-            }
-            OrderItem orderItem = new OrderItem();
-            orderItem.setOrderId(order.getId());
-            orderItem.setProductId(product.getId());
-            orderItem.setProductNameSnapshot(product.getName());
-            orderItem.setQuantity(itemReq.getQuantity());
-            orderItem.setUnitPrice(product.getBasePrice());
-            orderItem.setDiscountAmount(BigDecimal.ZERO);
-            orderItem.setFinalUnitPrice(product.getBasePrice());
-            orderItem.setLineTotal(product.getBasePrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
-            orderItemRepo.save(orderItem);
-
-            Inventory inventory = inventoryMap.get(product.getId());
-            if (inventory == null) {
-                throw new MHException(MHErrors.INVENTORY_NOT_FOUND);
-            }
-            inventory.setQuantityInStock(inventory.getQuantityInStock() - itemReq.getQuantity());
-            inventoryRepo.save(inventory);
-        }
+        orderItemService.processAndSaveOrderItems(order.getId(), req.getItems());
 
         if (req.getSource() == OrderSource.CART) {
-            removeCartItems(userId, req.getItems());
+            cartCleanupService.removeCartItems(userId, req.getItems());
         }
 
-        TrackingLog trackingLog = new TrackingLog();
-
-        trackingLog.setOrderId(order.getId());
-        trackingLog.setStatus(OrderStatus.PENDING);
-        trackingLog.setNote("Order created");
-        trackingLog.setChangedByUserId(userId);
-        trackingLog.setChangedAt(LocalDateTime.now());
-
-        trackingLogRepo.save(trackingLog);
+        trackingLogService.logTracking(order.getId(), OrderStatus.PENDING, "Order created", null, userId);
+        notificationService.createNotification(order, OrderStatus.PENDING);
 
         PlaceOrderRes res = new PlaceOrderRes();
         res.setOrderId(order.getId());
         res.setOrderCode(order.getOrderCode());
         res.setTrackingNumber(order.getTrackingNumber());
+        return res;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateStatus(String orderId, UpdateOrderStatusReq req) {
+        Order order = orderRepo.findById(orderId).orElseThrow(() -> new MHException(MHErrors.ORDER_NOT_FOUND));
+        String userId = SecurityUtils.getCurrentUserId();
+
+        OrderStatus currentStatus = order.getOrderStatus();
+        OrderStatus newStatus = req.getStatus();
+
+        validationService.validateTransition(currentStatus, newStatus);
+        validationService.validateRolePermission(userId, currentStatus, newStatus);
+
+        order.setOrderStatus(newStatus);
+        orderRepo.save(order);
+
+        trackingLogService.logTracking(order.getId(), newStatus, req.getNote(), req.getLocation(), userId);
+        notificationService.createNotification(order, newStatus);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderDetailRes getOrderDetail(String orderId) {
+        Order order = orderRepo.findById(orderId).orElseThrow(() -> new MHException(MHErrors.ORDER_NOT_FOUND));
+        validationService.validateOrderAccess(order);
+
+        List<OrderItem> orderItems = orderItemRepo.findByOrderId(orderId);
+
+        OrderDetailRes res = orderMapper.toOrderDetailRes(order);
+        res.setItems(orderMapper.toItemResList(orderItems));
 
         return res;
     }
 
-    private void removeCartItems(String userId, List<OrderItemReq> items) {
+    @Override
+    @Transactional(readOnly = true)
+    public TrackingTimelineRes getTrackingTimeline(String orderId) {
+        Order order = orderRepo.findById(orderId).orElseThrow(() -> new MHException(MHErrors.ORDER_NOT_FOUND));
+        validationService.validateOrderAccess(order);
 
-        Cart cart = cartRepo.findByUserId(userId).orElseThrow(() -> new MHException(MHErrors.CART_NOT_FOUND));
-        List<String> productIds = items.stream().map(OrderItemReq::getProductId).toList();
-        List<CartItem> cartItems = cartItemRepo.findAllByCartIdAndProductIdIn(cart.getId(), productIds);
-        cartItemRepo.deleteAll(cartItems);
+        List<TrackingLog> trackingLogs = trackingLogService.getTrackingLogs(orderId);
+        Set<String> userIds = trackingLogs.stream().map(TrackingLog::getChangedByUserId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+        Map<String, String> userNameMap = userRepo.findAllById(userIds).stream().collect(Collectors.toMap(User::getId, u -> u.getLastName() + " " + u.getFirstName()));
+
+        List<TrackingEventRes> events = trackingLogs.stream()
+                .map(log -> orderMapper.toTrackingEventRes(log, userNameMap.getOrDefault(log.getChangedByUserId(), "System")))
+                .toList();
+        TrackingTimelineRes res = new TrackingTimelineRes();
+        res.setEvents(events);
+        return res;
     }
 
-    private Promotion validatePromotion(String promotionId) {
-        if (promotionId == null || promotionId.isBlank()) {
-            return null;
-        }
-        Promotion promotion = promotionRepo.findById(promotionId).orElseThrow(() -> new MHException(MHErrors.PROMOTION_NOT_FOUND));
-        LocalDateTime now = LocalDateTime.now();
-        if (now.isBefore(promotion.getStartAt()) || now.isAfter(promotion.getEndAt())) {
-            throw new MHException(MHErrors.INVALID_PROMOTION);
-        }
-        return promotion;
-    }
-
-    private String generateOrderCode() {
-        return "ORD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-    }
-
-    private String generateTrackingNumber() {
-        return "TRK-" + UUID.randomUUID().toString().substring(0, 10).toUpperCase();
-    }
-
-    private BigDecimal calculateSubtotal(List<OrderItemReq> items, List<OrderIssueRes> issues) {
-
-        BigDecimal subtotal = BigDecimal.ZERO;
-
-        List<String> productIds = items.stream().map(OrderItemReq::getProductId).toList();
-        List<Product> products = productRepo.findAllById(productIds);
-        if (products.size() != productIds.size()) {
-            throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-        }
-        Map<String, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, Function.identity()));
-
-        List<Inventory> inventories = inventoryRepo.findAllById(productIds);
-        if (inventories.size() != productIds.size()) {
-            throw new MHException(MHErrors.INVENTORY_NOT_FOUND);
-        }
-        Map<String, Inventory> inventoryMap = inventories.stream().collect(Collectors.toMap(Inventory::getProductId, Function.identity()));
-
-        for (OrderItemReq item : items) {
-            Product product = productMap.get(item.getProductId());
-            if (product == null) {
-                throw new MHException(MHErrors.PRODUCT_NOT_FOUND);
-            }
-            if (product.getStatus() != ProductStatus.ACTIVE) {
-                OrderIssueRes issue = new OrderIssueRes();
-                issue.setProductId(product.getId());
-                issue.setType("PRODUCT_INACTIVE");
-                issue.setMessage("Product inactive");
-                issues.add(issue);
-
-                continue;
-            }
-
-            Inventory inventory = inventoryMap.get(product.getId());
-            if (inventory == null) {
-                throw new MHException(MHErrors.INVENTORY_NOT_FOUND);
-            }
-
-            if (item.getQuantity() > inventory.getQuantityInStock()) {
-                OrderIssueRes issue = new OrderIssueRes();
-                issue.setProductId(product.getId());
-                issue.setType("OUT_OF_STOCK");
-                issue.setMessage("Only " + inventory.getQuantityInStock() + " items left");
-                issues.add(issue);
-            }
-
-            BigDecimal lineTotal = product.getBasePrice().multiply(BigDecimal.valueOf(item.getQuantity()));
-
-            subtotal = subtotal.add(lineTotal);
-
-        }
-
-        return subtotal;
-    }
-
-    private void validateDuplicateProducts(List<OrderItemReq> items) {
-        Set<String> productIds = new HashSet<>();
-        for (OrderItemReq item : items) {
-            if (!productIds.add(item.getProductId())) {
-                throw new MHException(MHErrors.DUPLICATE_PRODUCT);
-            }
-        }
-    }
-
-    private BigDecimal calculateDiscount(BigDecimal subtotal, String promotionId, List<OrderIssueRes> issues) {
-
-        if (promotionId == null || promotionId.isBlank()) {
-            return BigDecimal.ZERO;
-        }
-
-        Promotion promotion = promotionRepo.findById(promotionId).orElse(null);
-
-        if (promotion == null) {
-            OrderIssueRes issue = new OrderIssueRes();
-            issue.setType("INVALID_PROMOTION");
-            issue.setMessage("Promotion not found");
-            issues.add(issue);
-            return BigDecimal.ZERO;
-        }
+    public Order createOrder(PlaceOrderReq req, String userId, Address address, PaymentMethod paymentMethod,
+                             Carrier carrier, Promotion promotion, OrderItemService.ItemMetrics metrics,
+                             BigDecimal discountTotal, BigDecimal shippingFee, BigDecimal grandTotal) {
 
         LocalDateTime now = LocalDateTime.now();
 
-        if (now.isBefore(promotion.getStartAt()) || now.isAfter(promotion.getEndAt())) {
-            OrderIssueRes issue = new OrderIssueRes();
-            issue.setType("INVALID_PROMOTION");
-            issue.setMessage("Promotion expired");
-            issues.add(issue);
-            return BigDecimal.ZERO;
-        }
+        return Order.builder()
+                .orderCode(codeGenerator.generateOrderCode())
+                .trackingNumber(codeGenerator.generateTrackingNumber())
+                .userId(userId)
+                .placedAt(now)
+                .estimatedDeliveryAt(now.plusDays(3))
+                .orderStatus(OrderStatus.PENDING)
+                .paymentStatus(PaymentStatus.UNPAID)
+                .note(req.getNote())
 
-        BigDecimal discount;
+                .addressId(address.getId())
+                .paymentMethodId(paymentMethod.getId())
+                .carrierId(carrier.getId())
+                .promotionId(promotion != null ? promotion.getId() : null)
 
-        if (promotion.getDiscountType() == DiscountType.PERCENT) {
-            discount = subtotal.multiply(promotion.getDiscountValue().divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
-        } else {
-            discount = promotion.getDiscountValue();
-        }
+                .itemTotal(metrics.getItemTotal())
+                .totalWeight(metrics.getTotalWeight())
+                .discountTotal(discountTotal)
+                .shippingFee(shippingFee)
+                .grandTotal(grandTotal)
 
-        if (discount.compareTo(subtotal) > 0) {
-            discount = subtotal;
-        }
+                .recipientNameSnapshot(address.getRecipientName())
+                .recipientPhoneSnapshot(address.getRecipientPhone())
+                .provinceSnapshot(address.getProvince())
+                .districtSnapshot(address.getDistrict())
+                .wardSnapshot(address.getWard())
+                .streetSnapshot(address.getStreet())
+                .detailSnapshot(address.getDetail())
+                .postalCodeSnapshot(address.getPostalCode())
+                .paymentMethodNameSnapshot(paymentMethod.getName())
+                .carrierNameSnapshot(carrier.getName())
+                .promotionCodeSnapshot(promotion != null ? promotion.getCode() : null)
 
-        return discount;
-
+                .build();
     }
-
-    private Carrier randomCarrier() {
-        List<Carrier> carriers = carrierRepo.findAllByStatus(CarrierStatus.ACTIVE);
-        if (carriers.isEmpty()) {
-            throw new MHException(MHErrors.CARRIER_NOT_FOUND);
-        }
-        int index = ThreadLocalRandom.current().nextInt(carriers.size());
-        return carriers.get(index);
-    }
-
 }

@@ -1,26 +1,16 @@
 package com.example.ordermanagement.dto.response;
 
 import com.example.ordermanagement.common.ProductStatus;
-import lombok.Getter;
-import lombok.Setter;
-
+import lombok.Data;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
-@Getter
-@Setter
+@Data
 public class ProductRes {
-
     private String id;
-    private String categoryId;
+    private String sku;
     private String name;
-    private String description;
+    private String categoryName;
     private BigDecimal basePrice;
-    private BigDecimal weight;
+    private Integer quantityInStock;
     private ProductStatus status;
-
-    private LocalDateTime createdAt;
-    private String createdBy;
-    private LocalDateTime lastModifiedAt;
-    private String lastModifiedBy;
 }
